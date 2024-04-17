@@ -66,10 +66,19 @@ as_create(void)
 	/*
 	 * Initialize as needed.
 	 */
-	as->pagetable = NULL;  // 初始化时页表为空
+
+	 // 初始化二级页表
+    as->pagetable = kmalloc(sizeof(pte_t *) * NUM_PAGETABLE_ENTRIES);
+    if (as->pagetable == NULL) {
+        kfree(as);
+        return NULL;
+    }
+    for (unsigned int i = 0; i < NUM_PAGETABLE_ENTRIES; i++) {
+        as->pagetable[i] = NULL;  // 初始时没有第二级页表
+    }
+
 	as->regions = NULL;
     as->as_loaded = false;  // 标记地址空间尚未加载任何内容
-
 
 	return as;
 }
@@ -147,7 +156,7 @@ as_destroy(struct addrspace *as)
     // 释放页表所占用的内存
     if (as->pagetable) {
         // 遍历一级页表，释放所有二级页表
-        for (int i = 0; i < 2048; i++) {
+        for (unsigned int i = 0; i < NUM_PAGETABLE_ENTRIES; i++) {
             if (as->pagetable[i] != NULL) {
                 kfree(as->pagetable[i]);  // 释放二级页表
             }
@@ -239,6 +248,52 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	// return ENOSYS; /* Unimplemented */
 }
 
+pte_t *page_lookup(struct addrspace *as, vaddr_t vaddr) {
+    if (as == NULL || as->pagetable == NULL) {
+        return NULL;  // 检查地址空间或页表是否为空
+    }
+
+    unsigned int dir_index = vaddr >> 22;  // 假设使用高10位作为一级索引
+    unsigned int tbl_index = (vaddr >> 12) & 0x3FF;  // 中间10位作为二级索引
+
+    if (as->pagetable[dir_index] == NULL) {
+        return NULL;  // 一级页表项为空
+    }
+
+    pte_t *pt_entry = &as->pagetable[dir_index][tbl_index];
+    if (pt_entry->valid == 0) {
+        return NULL;  // 页表项无效
+    }
+
+    return pt_entry;  // 返回找到的页表项
+}
+
+int page_insert(struct addrspace *as, vaddr_t vaddr, paddr_t paddr, unsigned int permissions) {
+    if (as == NULL || as->pagetable == NULL) {
+        return EINVAL;  // 地址空间或页表为空
+    }
+
+    unsigned int dir_index = vaddr >> 22;  // 使用高10位作为一级索引
+    unsigned int tbl_index = (vaddr >> 12) & 0x3FF;  // 中间10位作为二级索引
+
+    if (as->pagetable[dir_index] == NULL) {
+        as->pagetable[dir_index] = kmalloc(sizeof(pte_t) * 1024);
+        if (as->pagetable[dir_index] == NULL) {
+            return ENOMEM;  // 内存分配失败
+        }
+        memset(as->pagetable[dir_index], 0, sizeof(pte_t) * 1024);  // 初始化页表
+    }
+
+    pte_t *pt_entry = &as->pagetable[dir_index][tbl_index];
+    pt_entry->paddr = paddr;
+    pt_entry->valid = 1;
+    pt_entry->permissions = permissions;
+    pt_entry->dirty = 0;
+    pt_entry->used = 0;
+
+    return 0;  // 插入成功
+}
+
 int
 as_prepare_load(struct addrspace *as)
 {
@@ -257,18 +312,22 @@ as_prepare_load(struct addrspace *as)
         // 此处只确保区域的内存已经分配并清零
 
         // 检查并确保每个区域的内存分配
-        for (size_t i = 0; i < rgn->size; i += PAGE_SIZE) {
+         for (size_t i = 0; i < rgn->size; i += PAGE_SIZE) {
             vaddr_t addr = rgn->base + i;
-            if (paddr_t paddr = page_lookup(as, addr) == 0) { // page_lookup 是假设的查找页的函数
-                paddr = alloc_kpages(1); // 分配一页物理内存
+            pte_t *pte = page_lookup(as, addr);  // 使用page_lookup查找页表项
+
+            if (pte == NULL || pte->valid == 0) {  // 如果页表项不存在或无效
+                paddr_t paddr = alloc_kpages(1);  // 分配一页物理内存
                 if (paddr == 0) {
-                    return ENOMEM; // 内存分配失败
+                    return ENOMEM;  // 内存分配失败
                 }
-                bzero((void *)PADDR_TO_KVADDR(paddr), PAGE_SIZE); // 清零
-                page_insert(as, addr, paddr); // page_insert 是假设的添加页映射的函数
+                bzero((void *)PADDR_TO_KVADDR(paddr), PAGE_SIZE);  // 清零
+                int result = page_insert(as, addr, paddr, rgn->permissions);  // 添加页映射
+                if (result != 0) {
+                    return result;  // 处理page_insert的错误
+                }
             }
         }
-
         rgn = rgn->next;
     }
 	// (void)as;

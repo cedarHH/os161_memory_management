@@ -48,6 +48,14 @@ struct vnode;
  * You write this.
  */
 
+typedef struct pte {
+    paddr_t paddr;      // 物理地址
+    unsigned int valid: 1;   // 是否有效
+    unsigned int dirty: 1;   // 是否被修改过
+    unsigned int used: 1;    // 是否被访问过
+    unsigned int permissions: 3; // 访问权限，如读、写、执行
+} pte_t;
+
 struct region {
     vaddr_t base;  // 区域的虚拟基地址
     size_t size;   // 区域的大小
@@ -78,6 +86,9 @@ struct addrspace {
         /* Put stuff here for your VM system */
 #endif
 };
+
+pte_t *page_lookup(struct addrspace *as, vaddr_t vaddr);
+int page_insert(struct addrspace *as, vaddr_t vaddr, paddr_t paddr, unsigned int permissions);
 
 /*
  * Functions in addrspace.c:
