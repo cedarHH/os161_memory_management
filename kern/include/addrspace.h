@@ -48,9 +48,17 @@ struct vnode;
  * You write this.
  */
 
+struct region {
+    vaddr_t base;  // 区域的虚拟基地址
+    size_t size;   // 区域的大小
+    int permissions; // 权限标志，如可读、可写、可执行
+    struct region *next; // 指向下一个区域的指针
+};
+
 struct addrspace {
         // 一级分页表的指针
         paddr_t **pagetable;
+        struct region *regions;
         bool as_loaded;
 
 #if OPT_DUMBVM

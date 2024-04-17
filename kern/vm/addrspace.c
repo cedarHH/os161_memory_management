@@ -49,6 +49,9 @@
  */
 
 #define NUM_PAGETABLE_ENTRIES (0x80000000 / PAGE_SIZE)
+#define VM_READ 0x4  // 对应 MIPS 的 TLB_VALID
+#define VM_WRITE 0x2  // 对应 MIPS 的 TLB_DIRTY
+#define VM_EXEC 0x4  // MIPS 没有独立的执行权限，使用 VM_READ 来模拟
 
 struct addrspace *
 as_create(void)
@@ -64,6 +67,7 @@ as_create(void)
 	 * Initialize as needed.
 	 */
 	as->pagetable = NULL;  // 初始化时页表为空
+	as->regions = NULL;
     as->as_loaded = false;  // 标记地址空间尚未加载任何内容
 
 
@@ -151,6 +155,12 @@ as_destroy(struct addrspace *as)
         kfree(as->pagetable);  // 释放一级页表
     }
 
+	struct region *current = as->regions;
+    while (current != NULL) {
+        struct region *next = current->next;
+        kfree(current);  // 释放当前区域结构
+        current = next;  // 移动到下一个区域
+    }
 
 	kfree(as);
 }
@@ -202,13 +212,31 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	 * Write this.
 	 */
 
-	(void)as;
-	(void)vaddr;
-	(void)memsize;
-	(void)readable;
-	(void)writeable;
-	(void)executable;
-	return ENOSYS; /* Unimplemented */
+	if (as == NULL) return EINVAL;
+
+    struct region *new_region = kmalloc(sizeof(struct region));
+    if (new_region == NULL) return ENOMEM;
+
+    new_region->base = vaddr;
+    new_region->size = memsize;
+    new_region->permissions = 0;
+
+    if (readable) new_region->permissions |= VM_READ;
+    if (writeable) new_region->permissions |= VM_WRITE;
+    if (executable) new_region->permissions |= VM_EXEC;
+
+    new_region->next = as->regions;
+    as->regions = new_region;
+
+    return 0;
+
+	// (void)as;
+	// (void)vaddr;
+	// (void)memsize;
+	// (void)readable;
+	// (void)writeable;
+	// (void)executable;
+	// return ENOSYS; /* Unimplemented */
 }
 
 int
@@ -218,7 +246,32 @@ as_prepare_load(struct addrspace *as)
 	 * Write this.
 	 */
 
-	(void)as;
+	if (as == NULL) {
+        return EINVAL;  // 返回错误，如果地址空间未初始化
+    }
+
+    // 循环遍历地址空间中的每个区域，准备它们以加载数据
+    struct region *rgn = as->regions;
+    while (rgn != NULL) {
+        // 在此可以设置每个区域的权限，但实际上具体权限会在 vm_fault() 中处理
+        // 此处只确保区域的内存已经分配并清零
+
+        // 检查并确保每个区域的内存分配
+        for (size_t i = 0; i < rgn->size; i += PAGE_SIZE) {
+            vaddr_t addr = rgn->base + i;
+            if (paddr_t paddr = page_lookup(as, addr) == 0) { // page_lookup 是假设的查找页的函数
+                paddr = alloc_kpages(1); // 分配一页物理内存
+                if (paddr == 0) {
+                    return ENOMEM; // 内存分配失败
+                }
+                bzero((void *)PADDR_TO_KVADDR(paddr), PAGE_SIZE); // 清零
+                page_insert(as, addr, paddr); // page_insert 是假设的添加页映射的函数
+            }
+        }
+
+        rgn = rgn->next;
+    }
+	// (void)as;
 	return 0;
 }
 
