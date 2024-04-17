@@ -48,6 +48,8 @@
  *
  */
 
+#define NUM_PAGETABLE_ENTRIES (0x80000000 / PAGE_SIZE)
+
 struct addrspace *
 as_create(void)
 {
@@ -61,6 +63,9 @@ as_create(void)
 	/*
 	 * Initialize as needed.
 	 */
+	as->pagetable = NULL;  // 初始化时页表为空
+    as->as_loaded = false;  // 标记地址空间尚未加载任何内容
+
 
 	return as;
 }
@@ -79,7 +84,47 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	 * Write this.
 	 */
 
-	(void)old;
+	if (!old->as_loaded) {
+        // 如果源地址空间未加载，则无法复制
+        as_destroy(newas);
+        return EFAULT;
+    }
+
+	// 遍历源地址空间的页表
+    for (unsigned int i = 0; i < NUM_PAGETABLE_ENTRIES; i++) {
+        if (old->pagetable[i] != NULL) {
+            // 为目标页表分配内存
+            newas->pagetable[i] = kmalloc(sizeof(paddr_t) * NUM_PAGETABLE_ENTRIES);
+            if (newas->pagetable[i] == NULL) {
+                // 分配失败，清理已分配的内存并返回错误
+                as_destroy(newas);
+                return ENOMEM;
+            }
+            
+            // 复制每个页
+            for (unsigned int j = 0; j < NUM_PAGETABLE_ENTRIES; j++) {
+                if (old->pagetable[i][j] != 0) {
+                    // 为目标页框分配内存
+                    paddr_t new_frame = alloc_kpages(1);
+                    if (new_frame == 0) {
+                        // 分配失败，清理已分配的内存并返回错误
+                        as_destroy(newas);
+                        return ENOMEM;
+                    }
+
+					paddr_t new_paddr = KVADDR_TO_PADDR(new_frame);
+                    
+                    // 复制页内容
+                    memmove((void *)PADDR_TO_KVADDR(new_paddr),
+                            (const void *)PADDR_TO_KVADDR(old->pagetable[i][j]),
+                            PAGE_SIZE);
+                    
+                    // 更新新地址空间的页表条目
+                    newas->pagetable[i][j] = new_paddr;
+                }
+            }
+        }
+    }
 
 	*ret = newas;
 	return 0;
@@ -91,6 +136,21 @@ as_destroy(struct addrspace *as)
 	/*
 	 * Clean up as needed.
 	 */
+	if (as == NULL) {
+        return;
+    }
+
+    // 释放页表所占用的内存
+    if (as->pagetable) {
+        // 遍历一级页表，释放所有二级页表
+        for (int i = 0; i < 2048; i++) {
+            if (as->pagetable[i] != NULL) {
+                kfree(as->pagetable[i]);  // 释放二级页表
+            }
+        }
+        kfree(as->pagetable);  // 释放一级页表
+    }
+
 
 	kfree(as);
 }

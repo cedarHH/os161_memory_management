@@ -49,13 +49,22 @@ struct vnode;
  */
 
 struct addrspace {
+        // 一级分页表的指针
+        paddr_t **pagetable;
+        bool as_loaded;
+
 #if OPT_DUMBVM
+
         vaddr_t as_vbase1;
         paddr_t as_pbase1;
         size_t as_npages1;
+        int as_perm1;
+
         vaddr_t as_vbase2;
         paddr_t as_pbase2;
         size_t as_npages2;
+        int as_perm2;
+
         paddr_t as_stackpbase;
 #else
         /* Put stuff here for your VM system */
