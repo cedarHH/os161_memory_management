@@ -48,11 +48,9 @@
  *
  */
 //dev
-#define VM_READ 0x4  // 对应 MIPS 的 TLB_VALID
-#define VM_WRITE 0x2  // 对应 MIPS 的 TLB_DIRTY
-#define VM_EXEC 0x4  // MIPS 没有独立的执行权限，使用 VM_READ 来模拟
-
-
+// #define VM_READ 0x4  // 对应 MIPS 的 TLB_VALID
+// #define VM_WRITE 0x2  // 对应 MIPS 的 TLB_DIRTY
+// #define VM_EXEC 0x4  // MIPS 没有独立的执行权限，使用 VM_READ 来模拟
 
 struct addrspace *
 as_create(void)
@@ -109,10 +107,10 @@ as_copy(struct addrspace *old, struct addrspace **ret) //!TODO
     }
 
 	// 遍历源地址空间的页表
-    for (unsigned int i = 0; i < NUM_PAGETABLE_ENTRIES; i++) {
+    for (uint16_t i = 0; i < L1_PAGETABLE_NUM; i++) {
         if (old->pagetable[i] != NULL) {
             // 为目标页表分配内存
-            newas->pagetable[i] = kmalloc(sizeof(paddr_t) * NUM_PAGETABLE_ENTRIES);
+            newas->pagetable[i] = kmalloc(sizeof(paddr_t) * L2_PAGETABLE_NUM);
             if (newas->pagetable[i] == NULL) {
                 // 分配失败，清理已分配的内存并返回错误
                 as_destroy(newas);
@@ -120,7 +118,7 @@ as_copy(struct addrspace *old, struct addrspace **ret) //!TODO
             }
             
             // 复制每个页
-            for (unsigned int j = 0; j < NUM_PAGETABLE_ENTRIES; j++) {
+            for (uint16_t j = 0; j < L2_PAGETABLE_NUM; j++) {
                 if (old->pagetable[i][j] != 0) {
                     // 为目标页框分配内存
                     paddr_t new_frame = alloc_kpages(1);
@@ -145,7 +143,6 @@ as_copy(struct addrspace *old, struct addrspace **ret) //!TODO
     }
 
 	*ret = newas;
-    
 	return 0;
 }
 
@@ -227,14 +224,14 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 
     new_region->base = vaddr;
     new_region->size = memsize;
-    new_region->permissions = 0;
+    new_region->permission = 0;
 
-    if (readable) new_region->permissions |= VM_READ;
-    if (writeable) new_region->permissions |= VM_WRITE;
-    if (executable) new_region->permissions |= VM_EXEC;
+    if (readable) new_region->permission |= FLAG_READ;
+    if (writeable) new_region->permission |= FLAG_WRITE;
+    if (executable) new_region->permission |= FLAG_EXECUTE;
 
-    new_region->next = as->regions;
-    as->regions = new_region;
+    new_region->next = as->region_start;
+    as->region_start = new_region;
 
     return 0;
 
