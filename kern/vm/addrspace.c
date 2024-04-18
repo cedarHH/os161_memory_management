@@ -226,9 +226,9 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
     new_region->size = memsize;
     new_region->permission = 0;
 
-    if (readable) new_region->permission |= FLAG_READ;
-    if (writeable) new_region->permission |= FLAG_WRITE;
-    if (executable) new_region->permission |= FLAG_EXECUTE;
+    if (readable) SET_FLAG(new_region->permission, FLAG_READ);
+    if (writeable) SET_FLAG(new_region->permission, FLAG_WRITE);
+    if (executable) SET_FLAG(new_region->permission, FLAG_EXECUTE);
 
     new_region->next = as->region_start;
     as->region_start = new_region;
