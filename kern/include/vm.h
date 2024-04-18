@@ -44,6 +44,48 @@
 #define VM_FAULT_WRITE       1    /* A write was attempted */
 #define VM_FAULT_READONLY    2    /* A write to a readonly page was attempted*/
 
+#define L1_PAGE_MASK 0xFFE00000 /* mask for getting level 1 page number from addr */
+#define L2_PAGE_MASK   0x1FF000 /* mask for getting level 2 page number from addr */
+
+#define L1_PAGETABLE_NUM 2048 
+#define L2_PAGETABLE_NUM 512
+
+//The upper 20 bits of the page table entry are the physical page number
+//The remaining 12 bits are unused
+#define FLAG_READ         0x001 /* mask for getting readable bit from page table entry */ 
+#define FLAG_WRITE        0x002 /* mask for getting writable bit from page table entry */ 
+#define FLAG_EXECUTE      0x004 /* mask for getting executable bit from page table entry */
+#define FLAG_INMEMORY     0x008 /* mask for getting in-memory bit from page table entry */
+#define FLAG_DIRTY        0x010 /* mask for getting dirty bit from page table entry */      //!TODO
+#define FLAG_VALID        0x020 /* mask for getting valid bit from page table entry */      //!TODO
+#define FLAG_USED         0x040 /* mask for getting used bit from page table entry */       //!TODO
+
+#define PHYSICAL_PAGE_NUM(paddr) (paddr & PAGE_FRAME)        /* getting physical page number from addr */
+#define L1_PAGE_NUM(vaddr) (((vaddr) & L1_PAGE_MASK) >> 21)  /* getting level 1 page number from addr */
+#define L2_PAGE_NUM(vaddr) (((vaddr) & L2_PAGE_MASK) >> 12)  /* getting level 2 page number from addr */
+
+#define ZERO_FILLED_PAGE(vaddr_base) bzero(vaddr_base, PAGE_SIZE)
+
+#define SET_FLAG(entry, flag) ((entry) |= (flag))       /* set flag */
+#define CLEAR_FLAG(entry, flag) ((entry) &= ~(flag))    /* clear flag */ 
+#define IS_FLAG_SET(entry, flag) ((entry) & (flag))     /* check flag */
+
+
+typedef uint32_t page_table_entry, *l2_page_tabel, **l1_page_table;
+// typedef struct{
+//     uint32_t pte;
+//     struct lock *lock; 
+// }page_table_entry, *l2_page_tabel, **l1_page_table;
+
+l1_page_table pagetable_create_l1();
+
+uint32_t pagetable_create_l2(l1_page_table pagetable, uint16_t l1_ptable_num);
+
+uint32_t pagetable_insert(l1_page_table pagetable, uint16_t l1_ptable_num, uint16_t l2_page_num);
+
+uint32_t pagetable_copy(l1_page_table src_ptable, l1_page_table dest_ptable);
+
+void pagetable_destroy(l1_page_table pagetable);
 
 /* Initialization function */
 void vm_bootstrap(void);

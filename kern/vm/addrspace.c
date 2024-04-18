@@ -47,11 +47,12 @@
  * part of the VM subsystem.
  *
  */
-
-#define NUM_PAGETABLE_ENTRIES (0x80000000 / PAGE_SIZE)
+//dev
 #define VM_READ 0x4  // 对应 MIPS 的 TLB_VALID
 #define VM_WRITE 0x2  // 对应 MIPS 的 TLB_DIRTY
 #define VM_EXEC 0x4  // MIPS 没有独立的执行权限，使用 VM_READ 来模拟
+
+
 
 struct addrspace *
 as_create(void)
@@ -62,29 +63,33 @@ as_create(void)
 	if (as == NULL) {
 		return NULL;
 	}
-
+    
 	/*
 	 * Initialize as needed.
 	 */
 
-	 // 初始化二级页表
-    as->pagetable = kmalloc(sizeof(pte_t *) * NUM_PAGETABLE_ENTRIES);
-    if (as->pagetable == NULL) {
+    as->region_start = NULL;
+    as->heap_start = 0;
+    as->heap_end = 0;
+    as->stack_top = 0;
+	
+    as->pagetable = pagetable_create_l1();
+    if(as->pagetable == NULL){
         kfree(as);
         return NULL;
     }
-    for (unsigned int i = 0; i < NUM_PAGETABLE_ENTRIES; i++) {
-        as->pagetable[i] = NULL;  // 初始时没有第二级页表
+    
+    for (uint16_t i = 0; i < L1_PAGETABLE_NUM; ++i) {
+        as->pagetable[i] = NULL;
     }
 
-	as->regions = NULL;
-    as->as_loaded = false;  // 标记地址空间尚未加载任何内容
+    as->as_loaded = false;  // 标记地址空间尚未加载任何内容 dev
 
 	return as;
 }
 
 int
-as_copy(struct addrspace *old, struct addrspace **ret)
+as_copy(struct addrspace *old, struct addrspace **ret) //!TODO
 {
 	struct addrspace *newas;
 
@@ -140,6 +145,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
     }
 
 	*ret = newas;
+    
 	return 0;
 }
 
@@ -153,22 +159,13 @@ as_destroy(struct addrspace *as)
         return;
     }
 
-    // 释放页表所占用的内存
-    if (as->pagetable) {
-        // 遍历一级页表，释放所有二级页表
-        for (unsigned int i = 0; i < NUM_PAGETABLE_ENTRIES; i++) {
-            if (as->pagetable[i] != NULL) {
-                kfree(as->pagetable[i]);  // 释放二级页表
-            }
-        }
-        kfree(as->pagetable);  // 释放一级页表
-    }
+    pagetable_destroy(as->pagetable);
 
-	struct region *current = as->regions;
+	region_ptr *current = as->region_start;
     while (current != NULL) {
-        struct region *next = current->next;
-        kfree(current);  // 释放当前区域结构
-        current = next;  // 移动到下一个区域
+        region_ptr *temp = current;
+        current = current->next;
+        kfree(temp);
     }
 
 	kfree(as);
@@ -177,20 +174,22 @@ as_destroy(struct addrspace *as)
 void
 as_activate(void)
 {
+	int i, spl;
 	struct addrspace *as;
 
 	as = proc_getas();
 	if (as == NULL) {
-		/*
-		 * Kernel thread without an address space; leave the
-		 * prior address space in place.
-		 */
 		return;
 	}
 
-	/*
-	 * Write this.
-	 */
+	/* Disable interrupts on this CPU while frobbing the TLB. */
+	spl = splhigh();
+
+	for (i=0; i<NUM_TLB; i++) {
+		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+	}
+
+	splx(spl);
 }
 
 void
@@ -215,7 +214,7 @@ as_deactivate(void)
  */
 int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
-		 int readable, int writeable, int executable)
+		 int readable, int writeable, int executable) //!TODO
 {
 	/*
 	 * Write this.
@@ -248,52 +247,6 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
 	// return ENOSYS; /* Unimplemented */
 }
 
-pte_t *page_lookup(struct addrspace *as, vaddr_t vaddr) {
-    if (as == NULL || as->pagetable == NULL) {
-        return NULL;  // 检查地址空间或页表是否为空
-    }
-
-    unsigned int dir_index = vaddr >> 22;  // 假设使用高10位作为一级索引
-    unsigned int tbl_index = (vaddr >> 12) & 0x3FF;  // 中间10位作为二级索引
-
-    if (as->pagetable[dir_index] == NULL) {
-        return NULL;  // 一级页表项为空
-    }
-
-    pte_t *pt_entry = &as->pagetable[dir_index][tbl_index];
-    if (pt_entry->valid == 0) {
-        return NULL;  // 页表项无效
-    }
-
-    return pt_entry;  // 返回找到的页表项
-}
-
-int page_insert(struct addrspace *as, vaddr_t vaddr, paddr_t paddr, unsigned int permissions) {
-    if (as == NULL || as->pagetable == NULL) {
-        return EINVAL;  // 地址空间或页表为空
-    }
-
-    unsigned int dir_index = vaddr >> 22;  // 使用高10位作为一级索引
-    unsigned int tbl_index = (vaddr >> 12) & 0x3FF;  // 中间10位作为二级索引
-
-    if (as->pagetable[dir_index] == NULL) {
-        as->pagetable[dir_index] = kmalloc(sizeof(pte_t) * 1024);
-        if (as->pagetable[dir_index] == NULL) {
-            return ENOMEM;  // 内存分配失败
-        }
-        memset(as->pagetable[dir_index], 0, sizeof(pte_t) * 1024);  // 初始化页表
-    }
-
-    pte_t *pt_entry = &as->pagetable[dir_index][tbl_index];
-    pt_entry->paddr = paddr;
-    pt_entry->valid = 1;
-    pt_entry->permissions = permissions;
-    pt_entry->dirty = 0;
-    pt_entry->used = 0;
-
-    return 0;  // 插入成功
-}
-
 int
 as_prepare_load(struct addrspace *as)
 {
@@ -302,35 +255,14 @@ as_prepare_load(struct addrspace *as)
 	 */
 
 	if (as == NULL) {
-        return EINVAL;  // 返回错误，如果地址空间未初始化
+        return EFAULT;
+    }
+    region_ptr *current = as->region_start;
+    while (current != NULL) {
+        current->permission = SET_FLAG(current->permission, FLAG_WRITE);
+        current = current->next;
     }
 
-    // 循环遍历地址空间中的每个区域，准备它们以加载数据
-    struct region *rgn = as->regions;
-    while (rgn != NULL) {
-        // 在此可以设置每个区域的权限，但实际上具体权限会在 vm_fault() 中处理
-        // 此处只确保区域的内存已经分配并清零
-
-        // 检查并确保每个区域的内存分配
-         for (size_t i = 0; i < rgn->size; i += PAGE_SIZE) {
-            vaddr_t addr = rgn->base + i;
-            pte_t *pte = page_lookup(as, addr);  // 使用page_lookup查找页表项
-
-            if (pte == NULL || pte->valid == 0) {  // 如果页表项不存在或无效
-                paddr_t paddr = alloc_kpages(1);  // 分配一页物理内存
-                if (paddr == 0) {
-                    return ENOMEM;  // 内存分配失败
-                }
-                bzero((void *)PADDR_TO_KVADDR(paddr), PAGE_SIZE);  // 清零
-                int result = page_insert(as, addr, paddr, rgn->permissions);  // 添加页映射
-                if (result != 0) {
-                    return result;  // 处理page_insert的错误
-                }
-            }
-        }
-        rgn = rgn->next;
-    }
-	// (void)as;
 	return 0;
 }
 
@@ -340,8 +272,22 @@ as_complete_load(struct addrspace *as)
 	/*
 	 * Write this.
 	 */
-
-	(void)as;
+    if (as == NULL){
+        return EFAULT;
+    }
+    region_ptr *current = as->region_start;
+    while (current != NULL) {
+        uint32_t permission = current->permission;
+        if(OLD_PERMISSION(permission) != CURR_PERMISSION(permission)){
+            current->permission = OLD_PERMISSION(permission);
+        }
+        current = current->next;
+    }
+	int spl = splhigh();
+    for(uint16_t i = 0; i<NUM_TLB; ++i){
+        tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+    }
+    splx(spl);
 	return 0;
 }
 

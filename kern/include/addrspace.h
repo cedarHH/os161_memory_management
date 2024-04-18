@@ -48,27 +48,18 @@ struct vnode;
  * You write this.
  */
 
-typedef struct pte {
-    paddr_t paddr;      // 物理地址
-    unsigned int valid: 1;   // 是否有效
-    unsigned int dirty: 1;   // 是否被修改过
-    unsigned int used: 1;    // 是否被访问过
-    unsigned int permissions: 3; // 访问权限，如读、写、执行
-} pte_t;
+#define OLD_PERMISSION(permission) ((permission)>>4) & 0xF  /* getting old permission from region */
+#define CURR_PERMISSION(permission) (permission) & 0xF      /* getting current permission from region */
 
-struct region {
+typedef struct region {
     vaddr_t base;  // 区域的虚拟基地址
     size_t size;   // 区域的大小
-    int permissions; // 权限标志，如可读、可写、可执行
+    size_t npages;
+    uint32_t permission; 
     struct region *next; // 指向下一个区域的指针
-};
+}region_ptr;
 
 struct addrspace {
-        // 一级分页表的指针
-        paddr_t **pagetable;
-        struct region *regions;
-        bool as_loaded;
-
 #if OPT_DUMBVM
 
         vaddr_t as_vbase1;
@@ -84,11 +75,15 @@ struct addrspace {
         paddr_t as_stackpbase;
 #else
         /* Put stuff here for your VM system */
+                
+        l1_page_table pagetable;
+        region_ptr *region_start;
+        vaddr_t heap_start;
+        vaddr_t heap_end;
+        vaddr_t stack_top;
+        bool as_loaded; //dev
 #endif
 };
-
-pte_t *page_lookup(struct addrspace *as, vaddr_t vaddr);
-int page_insert(struct addrspace *as, vaddr_t vaddr, paddr_t paddr, unsigned int permissions);
 
 /*
  * Functions in addrspace.c:
