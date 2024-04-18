@@ -48,8 +48,9 @@ struct vnode;
  * You write this.
  */
 
-#define OLD_PERMISSION(permission) ((permission)>>4) & 0xF  /* getting old permission from region */
-#define CURR_PERMISSION(permission) (permission) & 0xF      /* getting current permission from region */
+#define OLD_PERMISSION(permission) (((permission)>>4) & 0xF)  /* getting old permission from region */
+#define CURR_PERMISSION(permission) ((permission) & 0xF)      /* getting current permission from region */
+#define REGION_PERMISSION(permission) ((((permission)<<4) | (permission)) & 0xFF) /* generate permissions for region */
 
 typedef struct region {
     vaddr_t base;  // 区域的虚拟基地址

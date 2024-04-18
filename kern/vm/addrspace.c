@@ -279,7 +279,7 @@ as_complete_load(struct addrspace *as)
     while (current != NULL) {
         uint32_t permission = current->permission;
         if(OLD_PERMISSION(permission) != CURR_PERMISSION(permission)){
-            current->permission = OLD_PERMISSION(permission);
+            current->permission = REGION_PERMISSION(permission);
         }
         current = current->next;
     }
