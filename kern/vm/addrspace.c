@@ -286,11 +286,33 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
        * Write this.
        */
 
-      (void)as;
+    if (as == NULL) {
+        return EFAULT;
+    }
 
-      /* Initial user-level stack pointer */
-      *stackptr = USERSTACK;
 
-      return 0;
+    vaddr_t stacktop = USERSTACK;
+
+    size_t stacksize = PAGE_SIZE;
+
+    vaddr_t stackbase = stacktop - stacksize;
+
+    stackbase &= PAGE_FRAME;
+
+    struct region *new_stack_region = kmalloc(sizeof(struct region));
+    if (new_stack_region == NULL) {
+        return ENOMEM; 
+    }
+
+    new_stack_region->base = stackbase;
+    new_stack_region->size = stacksize;
+    new_stack_region->permission = FLAG_READ | FLAG_WRITE; 
+    new_stack_region->next = as->region_start;
+
+    as->region_start = new_stack_region;
+
+    *stackptr = USERSTACK;
+
+    return 0; 
 }
 
