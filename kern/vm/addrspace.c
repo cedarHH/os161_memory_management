@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2000, 2001, 2002, 2003, 2004, 2005, 2008, 2009
- *	The President and Fellows of Harvard College.
+ *      The President and Fellows of Harvard College.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -55,22 +55,21 @@
 struct addrspace *
 as_create(void)
 {
-	struct addrspace *as;
+      struct addrspace *as;
 
-	as = kmalloc(sizeof(struct addrspace));
-	if (as == NULL) {
-		return NULL;
-	}
+      as = kmalloc(sizeof(struct addrspace));
+      if (as == NULL) {
+            return NULL;
+      }
     
-	/*
-	 * Initialize as needed.
-	 */
+      /*
+       * Initialize as needed.
+       */
 
     as->region_start = NULL;
-    as->heap_start = 0;
-    as->heap_end = 0;
-    as->stack_top = 0;
-	
+    // as->heap_start = 0; TODO
+    // as->heap_end = 0;  TODO
+      
     as->pagetable = pagetable_create_l1();
     if(as->pagetable == NULL){
         kfree(as);
@@ -81,120 +80,102 @@ as_create(void)
         as->pagetable[i] = NULL;
     }
 
-    as->as_loaded = false;  // 标记地址空间尚未加载任何内容 dev
-
-	return as;
+      return as;
 }
 
 int
 as_copy(struct addrspace *old, struct addrspace **ret) //!TODO
 {
-	struct addrspace *newas;
+      struct addrspace *newas;
 
-	newas = as_create();
-	if (newas==NULL) {
-		return ENOMEM;
-	}
+      newas = as_create();
+      if (newas==NULL) {
+            return ENOMEM;
+      }
 
-	/*
-	 * Write this.
-	 */
-
-	if (!old->as_loaded) {
-        // 如果源地址空间未加载，则无法复制
-        as_destroy(newas);
-        return EFAULT;
-    }
-
-    newas->pagetable = pagetable_create_l1();
-    if (newas->pagetable == NULL) {
+      /*
+       * Write this.
+       */
+    
+    if(pagetable_copy(old->pagetable, newas->pagetable)){
         as_destroy(newas);
         return ENOMEM;
     }
-
-	// 遍历源地址空间的页表
-    for (uint16_t i = 0; i < L1_PAGETABLE_NUM; i++) {
-        if (old->pagetable[i] != NULL) {
-            // 创建目标的二级页表
-            if (pagetable_create_l2(newas->pagetable, i) != 0) {
-                as_destroy(newas);
-                return ENOMEM;
-            }
-            
-            // 复制每个页
-            for (uint16_t j = 0; j < L2_PAGETABLE_NUM; j++) {
-                if (old->pagetable[i][j] != 0) {
-                    if (pagetable_insert(newas->pagetable, i, j) != 0) {
-                        as_destroy(newas);
-                        return ENOMEM;
-                    }
-
-					paddr_t old_paddr = PHYSICAL_PAGE_NUM(old->pagetable[i][j]);
-                    paddr_t new_paddr = PHYSICAL_PAGE_NUM(newas->pagetable[i][j]);
-                    
-                    memmove((void *)PADDR_TO_KVADDR(new_paddr),
-                            (const void *)PADDR_TO_KVADDR(old_paddr),
-                            PAGE_SIZE);
-                }
-            }
+    region_ptr oldRegionPtr = old->region_start;
+    while(oldRegionPtr){
+        region_ptr newNode = kmalloc(sizeof(region));
+        if (!newNode){
+            as_destroy(newas);
+            return ENOMEM;
         }
-    }
+        newNode->base = oldRegionPtr->base;
+        newNode->npages = oldRegionPtr->npages;
+        newNode->permission = oldRegionPtr->permission;
+        newNode->size = oldRegionPtr->size;
+        newNode->next = newas->region_start;
+        newas->region_start = newNode;
 
-	*ret = newas;
-	return 0;
+        oldRegionPtr = oldRegionPtr->next;
+    }
+    
+    // newas->heap_start = old->heap_start; TODO
+    // newas->heap_end = old->heap_end; TODO
+      *ret = newas;
+      return 0;
 }
+
 
 void
 as_destroy(struct addrspace *as)
 {
-	/*
-	 * Clean up as needed.
-	 */
-	if (as == NULL) {
+      /*
+       * Clean up as needed.
+       */
+      if (as == NULL) {
         return;
     }
 
     pagetable_destroy(as->pagetable);
 
-	region_ptr *current = as->region_start;
+      region_ptr current = as->region_start;
     while (current != NULL) {
-        region_ptr *temp = current;
+        region_ptr temp = current;
         current = current->next;
         kfree(temp);
     }
 
-	kfree(as);
+      kfree(as);
 }
 
 void
 as_activate(void)
 {
-	int i, spl;
-	struct addrspace *as;
+      int i, spl;
+      struct addrspace *as;
 
-	as = proc_getas();
-	if (as == NULL) {
-		return;
-	}
+      as = proc_getas();
+      if (as == NULL) {
+            return;
+      }
 
-	/* Disable interrupts on this CPU while frobbing the TLB. */
-	spl = splhigh();
+      /* Disable interrupts on this CPU while frobbing the TLB. */
+      spl = splhigh();
 
-	for (i=0; i<NUM_TLB; i++) {
-		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
-	}
+      for (i=0; i<NUM_TLB; i++) {
+            tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+      }
 
-	splx(spl);
+      splx(spl);
 }
 
 void
 as_deactivate(void)
 {
-	/*
-	 * Write this. For many designs it won't need to actually do
-	 * anything. See proc.c for an explanation of why it (might)
-	 * be needed.
-	 */
+      /*
+       * Write this. For many designs it won't need to actually do
+       * anything. See proc.c for an explanation of why it (might)
+       * be needed.
+       */
 }
 
 /*
@@ -209,68 +190,80 @@ as_deactivate(void)
  */
 int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
-		 int readable, int writeable, int executable) //!TODO
+             int readable, int writeable, int executable) //!TODO
 {
-	/*
-	 * Write this.
-	 */
+      /*
+       * Write this.
+       */
 
-	if (as == NULL) return EINVAL;
+      if (as == NULL) return EINVAL;
 
-    struct region *new_region = kmalloc(sizeof(struct region));
+      size_t npages;
+    vaddr_t region_ceiling = PAGE_NUM((vaddr + memsize + PAGE_SIZE -1));
+    
+    vaddr &= PAGE_FRAME;
+    memsize = region_ceiling - vaddr;
+    npages = memsize / PAGE_SIZE;
+
+    if (vaddr + memsize >= USERSTACK) return ENOMEM;
+    region_ptr new_region = kmalloc(sizeof(region));
     if (new_region == NULL) return ENOMEM;
 
     new_region->base = vaddr;
     new_region->size = memsize;
-    new_region->permission = 0;
-
-    if (readable) SET_FLAG(new_region->permission, FLAG_READ);
-    if (writeable) SET_FLAG(new_region->permission, FLAG_WRITE);
-    if (executable) SET_FLAG(new_region->permission, FLAG_EXECUTE);
+    new_region->npages = npages;
+    
+    uint32_t permission = 0;
+    
+    if (readable) SET_FLAG(permission, FLAG_READ);
+    if (writeable) SET_FLAG(permission, FLAG_WRITE);
+    if (executable) SET_FLAG(permission, FLAG_EXECUTE);
+    new_region->permission = REGION_PERMISSION(permission);
 
     new_region->next = as->region_start;
     as->region_start = new_region;
 
+    // as->heap_start = as->heap_end = vaddr + memsize; TODO
     return 0;
 
-	// (void)as;
-	// (void)vaddr;
-	// (void)memsize;
-	// (void)readable;
-	// (void)writeable;
-	// (void)executable;
-	// return ENOSYS; /* Unimplemented */
+      // (void)as;
+      // (void)vaddr;
+      // (void)memsize;
+      // (void)readable;
+      // (void)writeable;
+      // (void)executable;
+      // return ENOSYS; /* Unimplemented */
 }
 
 int
 as_prepare_load(struct addrspace *as)
 {
-	/*
-	 * Write this.
-	 */
+      /*
+       * Write this.
+       */
 
-	if (as == NULL) {
+      if (as == NULL) {
         return EFAULT;
     }
-    region_ptr *current = as->region_start;
+    region_ptr current = as->region_start;
     while (current != NULL) {
-        current->permission = SET_FLAG(current->permission, FLAG_WRITE);
+        SET_FLAG(current->permission, FLAG_WRITE);
         current = current->next;
     }
 
-	return 0;
+      return 0;
 }
 
 int
 as_complete_load(struct addrspace *as)
 {
-	/*
-	 * Write this.
-	 */
+      /*
+       * Write this.
+       */
     if (as == NULL){
         return EFAULT;
     }
-    region_ptr *current = as->region_start;
+    region_ptr current = as->region_start;
     while (current != NULL) {
         uint32_t permission = current->permission;
         if(OLD_PERMISSION(permission) != CURR_PERMISSION(permission)){
@@ -278,26 +271,26 @@ as_complete_load(struct addrspace *as)
         }
         current = current->next;
     }
-	int spl = splhigh();
+      int spl = splhigh();
     for(uint16_t i = 0; i<NUM_TLB; ++i){
         tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
     }
     splx(spl);
-	return 0;
+      return 0;
 }
 
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-	/*
-	 * Write this.
-	 */
+      /*
+       * Write this.
+       */
 
-	(void)as;
+      (void)as;
 
-	/* Initial user-level stack pointer */
-	*stackptr = USERSTACK;
+      /* Initial user-level stack pointer */
+      *stackptr = USERSTACK;
 
-	return 0;
+      return 0;
 }
 
