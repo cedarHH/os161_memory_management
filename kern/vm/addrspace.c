@@ -84,7 +84,7 @@ as_create(void)
 }
 
 int
-as_copy(struct addrspace *old, struct addrspace **ret) //!TODO
+as_copy(struct addrspace *old, struct addrspace **ret)
 {
       struct addrspace *newas;
 
@@ -190,7 +190,7 @@ as_deactivate(void)
  */
 int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
-             int readable, int writeable, int executable) //!TODO
+             int readable, int writeable, int executable)
 {
       /*
        * Write this.

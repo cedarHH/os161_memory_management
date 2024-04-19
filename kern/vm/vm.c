@@ -27,7 +27,7 @@ pagetable_create_l2(l1_page_table pagetable, uint16_t l1_ptable_num)
     }
     pagetable[l1_ptable_num] = sub_pagetable;
     for(uint16_t i = 0; i < L2_PAGETABLE_NUM; ++i){
-        pagetable[l1_ptable_num] = 0;
+        pagetable[l1_ptable_num][i] = 0;
     }
     return 0;
 }
@@ -63,8 +63,10 @@ pagetable_copy(l1_page_table src_ptable, l1_page_table dest_ptable)
                         pagetable_destroy(dest_ptable);
                         return ENOMEM;
                     }
+                    uint32_t dirty_bit = IS_FLAG_SET(src_ptable[i][j], TLBLO_DIRTY);
                     dest_ptable[i][j] = PAGE_NUM(KVADDR_TO_PADDR(vaddr_base));
-                    SET_FLAG(dest_ptable[i][j], TLBLO_VALID); //!TODO Other flag
+                    SET_FLAG(dest_ptable[i][j], TLBLO_VALID); 
+                    SET_FLAG(dest_ptable[i][j], dirty_bit); //!TODO Other flag
                 }
             }
         }
@@ -100,7 +102,7 @@ void vm_bootstrap(void)
 }
 
 int
-vm_fault(int faulttype, vaddr_t faultaddress)//!TODO
+vm_fault(int faulttype, vaddr_t faultaddress)
 {
     struct addrspace *as;
     region_ptr curRegion;
@@ -125,9 +127,11 @@ vm_fault(int faulttype, vaddr_t faultaddress)//!TODO
         ){
             break;
         }
+        curRegion = curRegion->next;
     }
-    if(!curRegion) return EFAULT;
-    
+    if(!curRegion) {
+        return EFAULT;
+    }
     ppage_base = KVADDR_TO_PADDR(faultaddress);
     l1_index = L1_PAGE_NUM(ppage_base);
     l2_index = L2_PAGE_NUM(ppage_base);
