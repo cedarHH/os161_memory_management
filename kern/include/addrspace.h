@@ -58,7 +58,7 @@ typedef struct region {
     size_t npages;
     uint32_t permission; 
     struct region *next; // 指向下一个区域的指针
-}region_ptr;
+}region, *region_ptr;
 
 struct addrspace {
 #if OPT_DUMBVM
@@ -78,11 +78,9 @@ struct addrspace {
         /* Put stuff here for your VM system */
                 
         l1_page_table pagetable;
-        region_ptr *region_start;
-        vaddr_t heap_start;
-        vaddr_t heap_end;
-        vaddr_t stack_top;
-        bool as_loaded; //dev
+        region_ptr region_start;
+        // vaddr_t heap_start; TODO
+        // vaddr_t heap_end;  TODO
 #endif
 };
 
