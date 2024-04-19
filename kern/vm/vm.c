@@ -5,10 +5,12 @@
 #include <addrspace.h>
 #include <vm.h>
 #include <machine/tlb.h>
+#include <proc.h>
+#include <spl.h>
 
 /* Place your page table functions here */
 l1_page_table 
-pagetable_create_l1()
+pagetable_create_l1(void)
 {
     //2048*4B = 8K>PAGE_SIZE
     l1_page_table pagetable = kmalloc(L1_PAGETABLE_NUM * sizeof(l2_page_tabel));
@@ -31,16 +33,17 @@ pagetable_create_l2(l1_page_table pagetable, uint16_t l1_ptable_num)
 }
 
 uint32_t 
-pagetable_insert(l1_page_table pagetable, uint16_t l1_ptable_num, uint16_t l2_page_num)
+pagetable_insert(l1_page_table pagetable, uint16_t l1_ptable_num, uint16_t l2_page_num, uint32_t dirty_bit)
 {
     vaddr_t vaddr_base = alloc_kpages(1);
-    if(vaddr_base = 0){
+    if(vaddr_base == 0){
         return ENOMEM;
     }
-    ZERO_FILLED_PAGE(vaddr_base);
+    ZERO_FILLED_PAGE((void *)vaddr_base);
     paddr_t paddr_base = KVADDR_TO_PADDR(vaddr_base);
-    pagetable[l1_ptable_num][l2_page_num] = PHYSICAL_PAGE_NUM(paddr_base);
-    SET_FLAG(pagetable[l1_ptable_num][l2_page_num], TLBLO_VALID); //!TODO Other flag
+    pagetable[l1_ptable_num][l2_page_num] = PAGE_NUM(paddr_base);
+    SET_FLAG(pagetable[l1_ptable_num][l2_page_num], TLBLO_VALID);
+    SET_FLAG(pagetable[l1_ptable_num][l2_page_num], dirty_bit); //!TODO Other flag
     return 0;
 }
 
@@ -55,12 +58,12 @@ pagetable_copy(l1_page_table src_ptable, l1_page_table dest_ptable)
                 if(src_ptable[i][j] != 0){
                     vaddr_t vaddr_base = alloc_kpages(1);
                     if(vaddr_base == 0) return ENOMEM;
-                    ZERO_FILLED_PAGE(vaddr_base);
-                    if(!memmove(vaddr_base, PADDR_TO_KVADDR(PHYSICAL_PAGE_NUM(src_ptable[i][j])),PAGE_SIZE)){
+                    ZERO_FILLED_PAGE((void *)vaddr_base);
+                    if(!memmove((void *)vaddr_base, (const void *)PADDR_TO_KVADDR(PAGE_NUM(src_ptable[i][j])),PAGE_SIZE)){
                         pagetable_destroy(dest_ptable);
                         return ENOMEM;
                     }
-                    dest_ptable[i][j] = PHYSICAL_PAGE_NUM(KVADDR_TO_PADDR(vaddr_base));
+                    dest_ptable[i][j] = PAGE_NUM(KVADDR_TO_PADDR(vaddr_base));
                     SET_FLAG(dest_ptable[i][j], TLBLO_VALID); //!TODO Other flag
                 }
             }
@@ -77,7 +80,7 @@ pagetable_destroy(l1_page_table pagetable)
             if (pagetable[i] != NULL) {
                 for(uint16_t j = 0; j < L2_PAGETABLE_NUM; ++j){
                     if(IS_FLAG_SET(pagetable[i][j],FLAG_USED)){
-                        free_kpages(PADDR_TO_KVADDR(PHYSICAL_PAGE_NUM(pagetable[i][j])));
+                        free_kpages(PADDR_TO_KVADDR(PAGE_NUM(pagetable[i][j])));
                     }
                 }
                 kfree(pagetable[i]);
@@ -100,25 +103,68 @@ int
 vm_fault(int faulttype, vaddr_t faultaddress)//!TODO
 {
     struct addrspace *as;
-    region_ptr rg;
-    paddr_t ppage_base;
+    region_ptr curRegion;
+    paddr_t ppage_base = 0;
+    uint32_t l1_index, l2_index;
+    uint32_t entry_hi, entry_lo;
+    uint32_t dirty_bit = 0;
+    int spl;
 
-    if(!faultaddress) return EFAULT;
-    faultaddress = PHYSICAL_PAGE_NUM(faultaddress);
-    switch (faulttype)
-    {
-    case VM_FAULT_READ:
-        break;
-    case VM_FAULT_WRITE:
-        break;
-    case VM_FAULT_READONLY:
-        return EFAULT;
-    default:
-        return EINVAL;
-    }
     as = proc_getas();
-    panic("vm_fault hasn't been written yet\n");
 
+    if((faulttype = VM_FAULT_READONLY)| !faultaddress | !as){
+        return EFAULT;
+    }    
+    
+    faultaddress = PAGE_NUM(faultaddress);
+    curRegion = as->region_start;
+    
+    while(curRegion){
+        if(faultaddress >= curRegion->base && 
+            faultaddress < curRegion->base + curRegion->size
+        ){
+            break;
+        }
+    }
+    if(!curRegion) return EFAULT;
+    
+    ppage_base = KVADDR_TO_PADDR(faultaddress);
+    l1_index = L1_PAGE_NUM(ppage_base);
+    l2_index = L2_PAGE_NUM(ppage_base);
+    
+    if(!as->pagetable[l1_index]){
+        if(pagetable_create_l2(as->pagetable, l1_index)){
+            return ENOMEM;
+        }
+    }
+
+    if(!as->pagetable[l1_index][l2_index]){
+        region_ptr curr = as->region_start;
+        while(curr){
+            if(faultaddress >= curr->base &&
+                faultaddress < curr->base + curr->size
+            ){
+                if(IS_FLAG_SET(curr->permission, FLAG_WRITE)){
+                    dirty_bit = TLBLO_DIRTY;
+                }
+                break;
+            }
+            curr = curr->next;
+        }
+        if(!curr){
+            return EFAULT;
+        }
+        if(pagetable_insert(as->pagetable,l1_index,l2_index,dirty_bit)){
+            return ENOMEM;
+        }
+    }
+
+    entry_hi = PAGE_NUM(faultaddress);
+    entry_lo = as->pagetable[l1_index][l2_index];
+
+    spl = splhigh();
+    tlb_random(entry_hi, entry_lo);
+    splx(spl);
     return EFAULT;
 }
 
@@ -129,7 +175,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)//!TODO
 void
 vm_tlbshootdown(const struct tlbshootdown *ts)
 {
-	(void)ts;
-	panic("vm tried to do tlb shootdown?!\n");
+    (void)ts;
+    panic("vm tried to do tlb shootdown?!\n");
 }
 
