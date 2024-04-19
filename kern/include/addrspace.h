@@ -53,11 +53,11 @@ struct vnode;
 #define REGION_PERMISSION(permission) ((((permission)<<4) | (permission)) & 0xFF) /* generate permissions for region */
 
 typedef struct region {
-    vaddr_t base;  // 区域的虚拟基地址
-    size_t size;   // 区域的大小
+    vaddr_t base;
+    size_t size;
     size_t npages;
     uint32_t permission; 
-    struct region *next; // 指向下一个区域的指针
+    struct region *next;
 }region, *region_ptr;
 
 struct addrspace {
@@ -75,12 +75,10 @@ struct addrspace {
 
         paddr_t as_stackpbase;
 #else
-        /* Put stuff here for your VM system */
-                
+        /* Put stuff here for your VM system */   
         l1_page_table pagetable;
         region_ptr region_start;
-        // vaddr_t heap_start; TODO
-        // vaddr_t heap_end;  TODO
+
 #endif
 };
 

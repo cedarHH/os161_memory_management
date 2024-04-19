@@ -55,10 +55,10 @@
 #define FLAG_READ         0x001 /* mask for getting readable bit from page table entry */ 
 #define FLAG_WRITE        0x002 /* mask for getting writable bit from page table entry */ 
 #define FLAG_EXECUTE      0x004 /* mask for getting executable bit from page table entry */
-#define FLAG_INMEMORY     0x008 /* mask for getting in-memory bit from page table entry */
-#define FLAG_DIRTY        0x010 /* mask for getting dirty bit from page table entry */      //!TODO
-#define FLAG_VALID        0x020 /* mask for getting valid bit from page table entry */      //!TODO
-#define FLAG_USED         0x040 /* mask for getting used bit from page table entry */       //!TODO
+#define FLAG_INMEMORY     0x008 /* mask for getting in-memory bit from page table entry */  //!unused
+#define FLAG_DIRTY        0x010 /* mask for getting dirty bit from page table entry */      //!unused
+#define FLAG_VALID        0x020 /* mask for getting valid bit from page table entry */      //!unused
+#define FLAG_USED         0x040 /* mask for getting used bit from page table entry */       
 
 #define PAGE_NUM(paddr) (paddr & PAGE_FRAME)        /* getting page number from addr */
 #define L1_PAGE_NUM(vaddr) (((vaddr) & L1_PAGE_MASK) >> 21)  /* getting level 1 page number from addr */
@@ -72,10 +72,6 @@
 
 
 typedef uint32_t page_table_entry, *l2_page_tabel, **l1_page_table;
-// typedef struct{
-//     uint32_t pte;
-//     struct lock *lock; 
-// }page_table_entry, *l2_page_tabel, **l1_page_table;
 
 l1_page_table pagetable_create_l1(void);
 

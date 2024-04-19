@@ -43,7 +43,8 @@ pagetable_insert(l1_page_table pagetable, uint16_t l1_ptable_num, uint16_t l2_pa
     paddr_t paddr_base = KVADDR_TO_PADDR(vaddr_base);
     pagetable[l1_ptable_num][l2_page_num] = PAGE_NUM(paddr_base);
     SET_FLAG(pagetable[l1_ptable_num][l2_page_num], TLBLO_VALID);
-    SET_FLAG(pagetable[l1_ptable_num][l2_page_num], dirty_bit); //!TODO Other flag
+    SET_FLAG(pagetable[l1_ptable_num][l2_page_num], dirty_bit); 
+    SET_FLAG(pagetable[l1_ptable_num][l2_page_num], FLAG_USED); //!TODO Other flag
     return 0;
 }
 
@@ -66,7 +67,8 @@ pagetable_copy(l1_page_table src_ptable, l1_page_table dest_ptable)
                     uint32_t dirty_bit = IS_FLAG_SET(src_ptable[i][j], TLBLO_DIRTY);
                     dest_ptable[i][j] = PAGE_NUM(KVADDR_TO_PADDR(vaddr_base));
                     SET_FLAG(dest_ptable[i][j], TLBLO_VALID); 
-                    SET_FLAG(dest_ptable[i][j], dirty_bit); //!TODO Other flag
+                    SET_FLAG(dest_ptable[i][j], dirty_bit);
+                    SET_FLAG(dest_ptable[i][j], FLAG_USED); //!TODO Other flag
                 }
             }
         }

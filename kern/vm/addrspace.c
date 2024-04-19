@@ -67,8 +67,6 @@ as_create(void)
        */
 
     as->region_start = NULL;
-    // as->heap_start = 0; TODO
-    // as->heap_end = 0;  TODO
       
     as->pagetable = pagetable_create_l1();
     if(as->pagetable == NULL){
@@ -118,8 +116,6 @@ as_copy(struct addrspace *old, struct addrspace **ret)
         oldRegionPtr = oldRegionPtr->next;
     }
     
-    // newas->heap_start = old->heap_start; TODO
-    // newas->heap_end = old->heap_end; TODO
       *ret = newas;
       return 0;
 }
@@ -223,7 +219,6 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t memsize,
     new_region->next = as->region_start;
     as->region_start = new_region;
 
-    // as->heap_start = as->heap_end = vaddr + memsize; TODO
     return 0;
 
       // (void)as;
@@ -290,14 +285,13 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
         return EFAULT;
     }
 
-
     vaddr_t stacktop = USERSTACK;
-
-    size_t stacksize = PAGE_SIZE;
-
+    size_t npages = 16;
+    size_t stacksize = npages*PAGE_SIZE;
     vaddr_t stackbase = stacktop - stacksize;
+    uint32_t permission = 0;
 
-    stackbase &= PAGE_FRAME;
+    stackbase = PAGE_NUM(stackbase);
 
     struct region *new_stack_region = kmalloc(sizeof(struct region));
     if (new_stack_region == NULL) {
@@ -306,7 +300,10 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 
     new_stack_region->base = stackbase;
     new_stack_region->size = stacksize;
-    new_stack_region->permission = FLAG_READ | FLAG_WRITE; 
+    new_stack_region->npages = npages;
+    SET_FLAG(permission, FLAG_READ);
+    SET_FLAG(permission, FLAG_WRITE);
+    new_stack_region->permission = REGION_PERMISSION(permission);; 
     new_stack_region->next = as->region_start;
 
     as->region_start = new_stack_region;
