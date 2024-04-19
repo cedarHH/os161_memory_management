@@ -112,7 +112,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)//!TODO
 
     as = proc_getas();
 
-    if((faulttype = VM_FAULT_READONLY)| !faultaddress | !as){
+    if((faulttype == VM_FAULT_READONLY)| !faultaddress | !as){
         return EFAULT;
     }    
     
@@ -165,7 +165,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)//!TODO
     spl = splhigh();
     tlb_random(entry_hi, entry_lo);
     splx(spl);
-    return EFAULT;
+    return 0;
 }
 
 /*
