@@ -106,13 +106,17 @@ as_copy(struct addrspace *old, struct addrspace **ret) //!TODO
         return EFAULT;
     }
 
+    newas->pagetable = pagetable_create_l1();
+    if (newas->pagetable == NULL) {
+        as_destroy(newas);
+        return ENOMEM;
+    }
+
 	// 遍历源地址空间的页表
     for (uint16_t i = 0; i < L1_PAGETABLE_NUM; i++) {
         if (old->pagetable[i] != NULL) {
-            // 为目标页表分配内存
-            newas->pagetable[i] = kmalloc(sizeof(paddr_t) * L2_PAGETABLE_NUM);
-            if (newas->pagetable[i] == NULL) {
-                // 分配失败，清理已分配的内存并返回错误
+            // 创建目标的二级页表
+            if (pagetable_create_l2(newas->pagetable, i) != 0) {
                 as_destroy(newas);
                 return ENOMEM;
             }
@@ -120,23 +124,17 @@ as_copy(struct addrspace *old, struct addrspace **ret) //!TODO
             // 复制每个页
             for (uint16_t j = 0; j < L2_PAGETABLE_NUM; j++) {
                 if (old->pagetable[i][j] != 0) {
-                    // 为目标页框分配内存
-                    paddr_t new_frame = alloc_kpages(1);
-                    if (new_frame == 0) {
-                        // 分配失败，清理已分配的内存并返回错误
+                    if (pagetable_insert(newas->pagetable, i, j) != 0) {
                         as_destroy(newas);
                         return ENOMEM;
                     }
 
-					paddr_t new_paddr = KVADDR_TO_PADDR(new_frame);
+					paddr_t old_paddr = PHYSICAL_PAGE_NUM(old->pagetable[i][j]);
+                    paddr_t new_paddr = PHYSICAL_PAGE_NUM(newas->pagetable[i][j]);
                     
-                    // 复制页内容
                     memmove((void *)PADDR_TO_KVADDR(new_paddr),
-                            (const void *)PADDR_TO_KVADDR(old->pagetable[i][j]),
+                            (const void *)PADDR_TO_KVADDR(old_paddr),
                             PAGE_SIZE);
-                    
-                    // 更新新地址空间的页表条目
-                    newas->pagetable[i][j] = new_paddr;
                 }
             }
         }
