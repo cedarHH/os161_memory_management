@@ -60,7 +60,7 @@
 #define FLAG_VALID        0x020 /* mask for getting valid bit from page table entry */      //!TODO
 #define FLAG_USED         0x040 /* mask for getting used bit from page table entry */       //!TODO
 
-#define PHYSICAL_PAGE_NUM(paddr) (paddr & PAGE_FRAME)        /* getting physical page number from addr */
+#define PAGE_NUM(paddr) (paddr & PAGE_FRAME)        /* getting page number from addr */
 #define L1_PAGE_NUM(vaddr) (((vaddr) & L1_PAGE_MASK) >> 21)  /* getting level 1 page number from addr */
 #define L2_PAGE_NUM(vaddr) (((vaddr) & L2_PAGE_MASK) >> 12)  /* getting level 2 page number from addr */
 
@@ -77,11 +77,11 @@ typedef uint32_t page_table_entry, *l2_page_tabel, **l1_page_table;
 //     struct lock *lock; 
 // }page_table_entry, *l2_page_tabel, **l1_page_table;
 
-l1_page_table pagetable_create_l1();
+l1_page_table pagetable_create_l1(void);
 
 uint32_t pagetable_create_l2(l1_page_table pagetable, uint16_t l1_ptable_num);
 
-uint32_t pagetable_insert(l1_page_table pagetable, uint16_t l1_ptable_num, uint16_t l2_page_num);
+uint32_t pagetable_insert(l1_page_table pagetable, uint16_t l1_ptable_num, uint16_t l2_page_num, uint32_t dirty_bit);
 
 uint32_t pagetable_copy(l1_page_table src_ptable, l1_page_table dest_ptable);
 
