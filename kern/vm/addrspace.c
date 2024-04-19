@@ -47,10 +47,6 @@
  * part of the VM subsystem.
  *
  */
-//dev
-// #define VM_READ 0x4  // 对应 MIPS 的 TLB_VALID
-// #define VM_WRITE 0x2  // 对应 MIPS 的 TLB_DIRTY
-// #define VM_EXEC 0x4  // MIPS 没有独立的执行权限，使用 VM_READ 来模拟
 
 struct addrspace *
 as_create(void)
